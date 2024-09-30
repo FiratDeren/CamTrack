@@ -2,7 +2,7 @@
 #include <DHT.h>
 
 // Define the DHT sensor type and pin number
-#define DHT22_PIN 14  // Pin for DHT22 sensor data
+#define DHT22_PIN 13  // Pin for DHT22 sensor data
 #define DHTTYPE DHT22 // DHT sensor type is DHT22
 // Create a DHT object
 DHT dht(DHT22_PIN, DHTTYPE);
@@ -89,15 +89,14 @@ void calculate_greyscale(int width, int height, int num_of_segments, camera_fb_t
 }
 
 // Function to process the captured image and detect segment changes
-void image_processing(int &number, const int num_of_segments, const float acceptable_diff, float *previous_frame_segments, float *current_frame_segments, int *segment_changes) {
+void image_processing(int &counter, const int num_of_segments, const float acceptable_diff, float *previous_frame_segments, float *current_frame_segments, int *segment_changes) {
 
   // Capture an image from the camera
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) { // Check if the capture failed
     Serial.println("Camera capture failed");
-    return;
   }
-
+  float diff[num_of_segments]={0};
   int width = fb->width; // Get the image width
   int height = fb->height; // Get the image height
 
@@ -111,7 +110,6 @@ void image_processing(int &number, const int num_of_segments, const float accept
     fb = esp_camera_fb_get();
     if (!fb) { // Check if the capture failed
       Serial.println("Camera capture failed");
-      continue;
     }
 
     // Calculate the grayscale values for the current frame segments
@@ -120,8 +118,8 @@ void image_processing(int &number, const int num_of_segments, const float accept
 
     // Compare the current frame segments with the previous frame segments
     for (int segment = 0; segment < num_of_segments; segment++) {
-      float diff = abs(current_frame_segments[segment] - previous_frame_segments[segment]);
-      if (diff > acceptable_diff) { // If the difference is greater than the acceptable threshold
+      diff[segment] = abs(current_frame_segments[segment] - previous_frame_segments[segment]);
+      if (diff[segment] > acceptable_diff) { // If the difference is greater than the acceptable threshold
         segment_changes[i] = segment; // Store the segment index where the change occurred
       }
     }
@@ -132,20 +130,11 @@ void image_processing(int &number, const int num_of_segments, const float accept
 
   // Check the direction of the segment changes and adjust the number accordingly
   if(segment_changes[2] < segment_changes[1] && segment_changes[1] < segment_changes[0]) {
-    number++;
+    counter++;
   }
   else if(segment_changes[2] > segment_changes[1] && segment_changes[1] > segment_changes[0]) {
-    number--;
-  }
-
-  // Print the segment changes
-  /*
-  for (int j = 0; j < num_of_segments - 2; j++) {
-    Serial.print(segment_changes[j]);
-    Serial.print(" ");
-  }
-  Serial.print("\n\n");
-  */
+    counter--;
+  } 
 }
 
 // Function to read temperature and humidity from the DHT sensor
@@ -155,9 +144,9 @@ void read_temp_hum(float &Temperature, float &Humidity) {
 }
 
 void loop() {
-  int number; // Initialize a counter variable
+  int counter; // Initialize a counter variable
   const int num_of_segments = 5; // Define the number of vertical segments to divide the image
-  const float acceptable_diff = 7.0; // Define the threshold for segment change detection
+  const float acceptable_diff = 6.5; // Define the threshold for segment change detection
   float previous_frame_segments[num_of_segments] = {0}; // Array to store previous frame segment averages
   float current_frame_segments[num_of_segments] = {0}; // Array to store current frame segment averages
   int segment_changes[num_of_segments - 2] = {0}; // Array to store the indices of segment changes
@@ -169,16 +158,15 @@ void loop() {
   read_temp_hum(Temperature, Humidity);
 
   // Call the image processing function to detect movement
-  image_processing(number, num_of_segments, acceptable_diff, previous_frame_segments, current_frame_segments, segment_changes);
+  image_processing(counter, num_of_segments, acceptable_diff, previous_frame_segments, current_frame_segments, segment_changes);
 
+  Serial.print("\n");
   // Check the number value and print the result based on the parity
-  if (number % 2 == 0) {
-    Serial.println("Move Left."); // Detected movement to the left
+  if (counter % 2 == 0) {
     Serial.print("Temperature: ");
     Serial.println(Temperature);
   }
   else {
-    Serial.println("Move Right."); // Detected movement to the right
     Serial.print("Humidity: ");
     Serial.println(Humidity);
   }
